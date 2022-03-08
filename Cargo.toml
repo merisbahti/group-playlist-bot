@@ -2,6 +2,7 @@
 name = "group-playlist-bot"
 version = "0.1.0"
 edition = "2021"
+default-run = "group-playlist-bot"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,3 +14,5 @@ pretty_env_logger = "0.4.0"
 tokio = { version =  "1.8", features = ["rt-multi-thread", "macros"] }
 regex = "*"
 lazy_static = "*"
+rspotify = { version = "*", features = ["default", "cli", "env-file"] }
+futures = "*"

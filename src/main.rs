@@ -1,11 +1,24 @@
+use std::str::FromStr;
+
+use futures::TryFutureExt;
+use rspotify::{
+    clients::OAuthClient,
+    model::{track, Id, PlayableId, PlaylistId, TrackId},
+};
 use teloxide::{
-    prelude2::*,
-    types::{MediaKind, MediaText, MessageCommon, MessageKind},
+    adaptors::AutoSend,
+    prelude::{Requester, RequesterExt},
+    respond,
+    types::{MediaKind, MediaText, Message, MessageCommon, MessageKind},
+    Bot,
 };
 extern crate dotenv;
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use regex::Regex;
+
+use crate::client::get_client;
+pub mod client;
 
 #[tokio::main]
 async fn main() {
@@ -16,15 +29,48 @@ async fn main() {
     let bot = Bot::from_env().auto_send();
 
     teloxide::repls2::repl(bot, |message: Message, bot: AutoSend<Bot>| async move {
+        let spotify = get_client().await;
+
         let track_ids = extract_media_text(&message)
             .map(extract_spotify_urls)
             .unwrap_or(vec![]);
-        match bot
-            .send_message(message.chat.id, format!("Found track ids: {track_ids:?}"))
+
+        if track_ids.len() == 0 {
+            log::info!("Found no track ids in message, skipping.");
+            return respond(());
+        }
+
+        if track_ids.len() > 1 {
+            bot.send_message(
+                message.chat.id,
+                format!(
+                    "Found more than 1 track id. Because I don't know rust I'll skip the rest."
+                ),
+            )
             .await
-        {
+            .unwrap();
+        }
+
+        let tracks = &[TrackId::from_id(track_ids.get(0).unwrap()).unwrap()];
+        let playable = tracks
+            .iter()
+            .map(|id| id as &dyn PlayableId)
+            .collect::<Vec<&dyn PlayableId>>();
+
+        let playlist_id = "3TMQK7Eh2XlEu4ai5QMbLw";
+        let playlist = PlaylistId::from_id(playlist_id).unwrap();
+
+        let add_items = spotify
+            .playlist_add_items(&playlist, playable, None)
+            .map_err(|err| err.to_string());
+        let send_message = add_items.and_then(|_| {
+            bot.send_message(message.chat.id, format!("Added to playlist!"))
+                .map_err(|err| err.to_string())
+        });
+
+        match send_message.await {
             Ok(_) => log::info!("Sent message successfully!"),
-            Err(_) => log::info!("Failed sending message"),
+            Err(e) => log::error!("{}", e),
         };
         respond(())
     })
