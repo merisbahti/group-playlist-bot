@@ -9,7 +9,7 @@ use teloxide::{
     adaptors::AutoSend,
     prelude::{Requester, RequesterExt},
     respond,
-    types::{MediaKind, MediaText, Message, MessageCommon, MessageKind},
+    types::{Chat, MediaKind, MediaText, Message, MessageCommon, MessageKind},
     Bot,
 };
 extern crate dotenv;
@@ -31,9 +31,15 @@ async fn main() {
     teloxide::repls2::repl(bot, |message: Message, bot: AutoSend<Bot>| async move {
         let spotify = get_client().await;
 
-        let track_ids = extract_media_text(&message)
-            .map(extract_spotify_urls)
-            .unwrap_or(vec![]);
+        let extracted_media_text = extract_media_text(&message).map(|(chat_id, message)| {
+            (format!("telegram-{chat_id}"), extract_spotify_urls(message))
+        });
+
+        if extracted_media_text.is_none() {
+            return respond(());
+        }
+
+        let (chat_id, track_ids) = extracted_media_text.unwrap();
 
         if track_ids.len() == 0 {
             log::info!("Found no track ids in message, skipping.");
@@ -77,16 +83,17 @@ async fn main() {
     .await;
 }
 
-fn extract_media_text(message: &Message) -> Option<&str> {
+fn extract_media_text(message: &Message) -> Option<(i64, &str)> {
     match message {
         Message {
+            chat: Chat { id, .. },
             kind:
                 MessageKind::Common(MessageCommon {
                     media_kind: MediaKind::Text(MediaText { text, .. }),
                     ..
                 }),
             ..
-        } => Some(text),
+        } => Some((*id, text)),
         _ => None,
     }
 }
