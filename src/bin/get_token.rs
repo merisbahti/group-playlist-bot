@@ -46,9 +46,9 @@ async fn main() {
     let mut spotify = AuthCodeSpotify::new(creds, oauth);
 
     let url = spotify.get_authorize_url(false).unwrap();
-    spotify.prompt_for_token(&url).await.unwrap();
+    spotify.prompt_for_token(&url).unwrap();
 
-    let token = spotify.token.lock().await.unwrap();
+    let token = spotify.token.lock().unwrap();
     println!(
         "RSPOTIFY_ACCESS_TOKEN={}",
         &token.as_ref().unwrap().access_token

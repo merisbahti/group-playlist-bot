@@ -2,7 +2,7 @@ use std::env;
 
 use rspotify::{clients::BaseClient, scopes, AuthCodeSpotify, Credentials, OAuth, Token};
 
-pub async fn get_client() -> AuthCodeSpotify {
+pub fn get_client() -> AuthCodeSpotify {
     if let Ok(access_token) = env::var("RSPOTIFY_ACCESS_TOKEN") {
         let tok = Token {
             access_token,
@@ -52,8 +52,8 @@ pub async fn get_client() -> AuthCodeSpotify {
         };
 
         let spotify = AuthCodeSpotify::new(creds, oauth);
-        *spotify.token.lock().await.unwrap() = Some(token);
-        spotify.refresh_token().await.unwrap();
+        *spotify.token.lock().unwrap() = Some(token);
+        spotify.refresh_token().unwrap();
         spotify
     } else {
         panic!(
