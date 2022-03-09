@@ -70,10 +70,8 @@ async fn main() {
 
         let result = spotify
             .current_user_playlists()
-            .filter_map(|a| {
-                log::info!("got one: {a:?}");
-                a.ok()
-            })
+            .take_while(|x| x.is_ok())
+            .filter_map(|a| a.ok())
             .collect::<Vec<_>>();
 
         log::info!("result: {result:?}");
@@ -100,9 +98,10 @@ async fn main() {
             .map_err(|err| err.to_string());
         let send_message = bot
             .send_message(message.chat.id, format!("Added to playlist!"))
-            .map_err(|err| err.to_string());
+            .map_err(|err| err.to_string())
+            .await;
 
-        match send_message.await {
+        match send_message {
             Ok(_) => log::info!("Sent message successfully!"),
             Err(e) => log::error!("{}", e),
         };
