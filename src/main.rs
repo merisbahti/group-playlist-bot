@@ -1,8 +1,7 @@
-use futures::{StreamExt, TryFutureExt, TryStreamExt};
+use futures::TryFutureExt;
 use rspotify::{
     clients::OAuthClient,
-    model::{Id, PlayableId, PlaylistId, SimplifiedPlaylist, TrackId},
-    ClientError,
+    model::{Id, PlayableId, TrackId},
 };
 use teloxide::{
     adaptors::AutoSend,
@@ -49,22 +48,14 @@ async fn main() {
             return respond(());
         }
 
-        if track_ids.len() > 1 {
-            bot.send_message(
-                message.chat.id,
-                format!(
-                    "Found more than 1 track id. Because I don't know rust I'll skip the rest."
-                ),
-            )
-            .await
-            .unwrap();
-        }
-
-        let tracks = &[TrackId::from_id(track_ids.get(0).unwrap()).unwrap()];
-        let playable = tracks
+        let sliced = track_ids
+            .into_iter()
+            .map(|track_id| TrackId::from_id(&track_id).unwrap())
+            .collect::<Vec<_>>();
+        let playable = sliced
             .iter()
-            .map(|id| id as &dyn PlayableId)
-            .collect::<Vec<&dyn PlayableId>>();
+            .map(|x| x as &dyn PlayableId)
+            .collect::<Vec<_>>();
 
         let expected_name = chat_id;
 
@@ -93,9 +84,11 @@ async fn main() {
             }
         };
 
-        let _add_items = spotify
-            .playlist_add_items(&found_playlist_id, playable, None)
-            .map_err(|err| err.to_string());
+        let _add_items = {
+            spotify
+                .playlist_add_items(&found_playlist_id, playable, None)
+                .map_err(|err| err.to_string())
+        };
         let send_message = bot
             .send_message(message.chat.id, format!("Added to playlist!"))
             .map_err(|err| err.to_string())
