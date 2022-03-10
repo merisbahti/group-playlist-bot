@@ -16,3 +16,4 @@ regex = "*"
 lazy_static = "*"
 rspotify = { version = "*", default-features=false, features = ["client-ureq", "cli", "env-file", "ureq-rustls-tls"] }
 futures = "*"
+rouille = "*"

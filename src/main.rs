@@ -10,7 +10,6 @@ use teloxide::{
     types::{Chat, MediaKind, MediaText, Message, MessageCommon, MessageKind},
     Bot,
 };
-extern crate dotenv;
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use regex::Regex;
