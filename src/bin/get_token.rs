@@ -91,14 +91,19 @@ async fn run_server(spotify: AuthCodeSpotify) {
                 if let Ok(lines) = read_lines("./.env") {
                     // Consumes the iterator, returns an (Optional) String
                     for line in lines {
-                        if let Ok(input) = line {
-                            let split_str: Vec<&str> = input.split("=").collect();
-                            env_file_lines.insert(split_str[0].trim().to_string(), split_str[1].trim().to_string());
-                        }
+                        match line {
+                            Ok(input) =>  {
+                                let split_str: Vec<&str> = input.split("=").collect();
+                                env_file_lines.insert(split_str[0].trim().to_string(), split_str[1].trim().to_string());
+                            },
+                            Err(e) => {
+                                eprintln!("Couldn't read line from file: {}", e);
+                            }
+                        };
                     }
                 }
 
-                env_file_lines.insert("RSPOTIFY_ACCESS_TOKEN".to_string(), format!("\"{}\"", &token.as_ref().unwrap().access_token));
+                env_file_lines.insert("RSPOTIFY_ACCESS_TOKEN".to_string(), format!("\"{}\"", token.as_ref().unwrap().access_token));
                 env_file_lines.insert("RSPOTIFY_REFRESH_TOKEN".to_string(), format!("\"{}\"", token.as_ref().unwrap().refresh_token.as_ref().unwrap()));
 
                 let mut file = OpenOptions::new()
@@ -120,7 +125,7 @@ async fn run_server(spotify: AuthCodeSpotify) {
                 println!("Done updating .env file. You may close the browser window.");
 
                 std::process::exit(0);
-                
+                #[allow(unreachable_code)]
                 rouille::Response::text("request received on /callback")
             },
             _ => rouille::Response::empty_404()
