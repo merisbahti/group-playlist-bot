@@ -98,8 +98,8 @@ async fn run_server(spotify: AuthCodeSpotify) {
                     }
                 }
 
-                env_file_lines.insert("RSPOTIFY_ACCESS_TOKEN".to_string(), ["\"", &token.as_ref().unwrap().access_token, "\""].join(""));
-                env_file_lines.insert("RSPOTIFY_REFRESH_TOKEN".to_string(), ["\"", token.as_ref().unwrap().refresh_token.as_ref().unwrap(), "\""].join(""));
+                env_file_lines.insert("RSPOTIFY_ACCESS_TOKEN".to_string(), format!("\"{}\"", &token.as_ref().unwrap().access_token));
+                env_file_lines.insert("RSPOTIFY_REFRESH_TOKEN".to_string(), format!("\"{}\"", token.as_ref().unwrap().refresh_token.as_ref().unwrap()));
 
                 let mut file = OpenOptions::new()
                     .write(true)
