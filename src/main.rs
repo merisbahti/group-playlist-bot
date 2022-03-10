@@ -1,4 +1,6 @@
-use futures::TryFutureExt;
+use std::sync::Arc;
+
+use futures::{lock::Mutex, TryFutureExt};
 use rspotify::{
     clients::OAuthClient,
     model::{Id, PlayableId, TrackId},
@@ -23,81 +25,87 @@ async fn main() {
     teloxide::enable_logging!();
     log::info!("Starting bot...");
 
+    let spotify = Arc::new(Mutex::new(get_client()));
     let bot = Bot::from_env().auto_send();
 
-    teloxide::repls2::repl(bot, |message: Message, bot: AutoSend<Bot>| async move {
-        log::info!("in async");
-        let spotify = get_client();
-        log::info!("gotten clientasync");
+    teloxide::repls2::repl(bot, {
+        move |msg: Message, bot: AutoSend<Bot>| {
+            let spotify = spotify.clone();
+            async move {
+                log::info!("in async");
+                let spotify = spotify.lock().await;
+                log::info!("gotten clientasync");
 
-        let extracted_media_text = extract_media_text(&message).map(|(chat_id, message)| {
-            (format!("telegram-{chat_id}"), extract_spotify_urls(message))
-        });
+                let extracted_media_text = extract_media_text(&msg).map(|(chat_id, message)| {
+                    (format!("telegram-{chat_id}"), extract_spotify_urls(message))
+                });
 
-        if extracted_media_text.is_none() {
-            log::info!("no media text in {message:?}");
-            return respond(());
-        }
+                if extracted_media_text.is_none() {
+                    log::info!("no media text in {msg:?}");
+                    return respond(());
+                }
 
-        let (chat_id, track_ids) = extracted_media_text.unwrap();
-        log::info!("got media text: {track_ids:?}");
+                let (chat_id, track_ids) = extracted_media_text.unwrap();
+                log::info!("got media text: {track_ids:?}");
 
-        if track_ids.len() == 0 {
-            log::info!("Found no track ids in message, skipping.");
-            return respond(());
-        }
+                if track_ids.len() == 0 {
+                    log::info!("Found no track ids in message, skipping.");
+                    return respond(());
+                }
 
-        let sliced = track_ids
-            .into_iter()
-            .map(|track_id| TrackId::from_id(&track_id).unwrap())
-            .collect::<Vec<_>>();
-        let playable = sliced
-            .iter()
-            .map(|x| x as &dyn PlayableId)
-            .collect::<Vec<_>>();
+                let sliced = track_ids
+                    .into_iter()
+                    .map(|track_id| TrackId::from_id(&track_id).unwrap())
+                    .collect::<Vec<_>>();
+                let playable = sliced
+                    .iter()
+                    .map(|x| x as &dyn PlayableId)
+                    .collect::<Vec<_>>();
 
-        let expected_name = chat_id;
+                let expected_name = chat_id;
 
-        let result = spotify
-            .current_user_playlists()
-            .take_while(|x| x.is_ok())
-            .filter_map(|a| a.ok())
-            .collect::<Vec<_>>();
+                let result = spotify
+                    .current_user_playlists()
+                    .take_while(|x| x.is_ok())
+                    .filter_map(|a| a.ok())
+                    .collect::<Vec<_>>();
 
-        log::info!("result: {result:?}");
-        let found_playlist_id = {
-            let found_playlist = result.into_iter().find(|x| x.name == expected_name);
-            if let Some(playlist_id) = found_playlist {
-                playlist_id.id
-            } else {
-                spotify
-                    .user_playlist_create(
-                        &spotify.current_user().unwrap().id,
-                        &expected_name,
-                        Some(true),
-                        Some(false),
-                        None,
-                    )
-                    .unwrap()
-                    .id
+                log::info!("result: {result:?}");
+                let found_playlist_id = {
+                    let found_playlist = result.into_iter().find(|x| x.name == expected_name);
+                    if let Some(playlist_id) = found_playlist {
+                        playlist_id.id
+                    } else {
+                        spotify
+                            .user_playlist_create(
+                                &spotify.current_user().unwrap().id,
+                                &expected_name,
+                                Some(true),
+                                Some(false),
+                                None,
+                            )
+                            .unwrap()
+                            .id
+                    }
+                };
+
+                let _add_items = {
+                    spotify
+                        .playlist_add_items(&found_playlist_id, playable, None)
+                        .map_err(|err| err.to_string())
+                };
+                let send_message = bot
+                    .send_message(msg.chat.id, format!("Added to playlist!"))
+                    .map_err(|err| err.to_string())
+                    .await;
+
+                match send_message {
+                    Ok(_) => log::info!("Sent message successfully!"),
+                    Err(e) => log::error!("{}", e),
+                };
+                respond(())
             }
-        };
-
-        let _add_items = {
-            spotify
-                .playlist_add_items(&found_playlist_id, playable, None)
-                .map_err(|err| err.to_string())
-        };
-        let send_message = bot
-            .send_message(message.chat.id, format!("Added to playlist!"))
-            .map_err(|err| err.to_string())
-            .await;
-
-        match send_message {
-            Ok(_) => log::info!("Sent message successfully!"),
-            Err(e) => log::error!("{}", e),
-        };
-        respond(())
+        }
     })
     .await;
 }
