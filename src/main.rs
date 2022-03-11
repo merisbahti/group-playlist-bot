@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{str::FromStr, sync::Arc};
 
 use dotenv::dotenv;
 use futures::{future::ok, lock::Mutex, TryFutureExt};
@@ -7,6 +7,7 @@ use regex::Regex;
 use rspotify::{
     clients::{BaseClient, OAuthClient},
     model::{Id, PlayableId, TrackId},
+    AuthCodeSpotify,
 };
 use teloxide::{
     adaptors::AutoSend,
@@ -53,120 +54,20 @@ async fn main() {
                     return respond(());
                 }
 
-                let parsing_result = track_ids
-                    .into_iter()
-                    .map(|track_id| TrackId::from_id(&track_id))
-                    .collect::<Result<Vec<_>, _>>();
+                let add_items_result =
+                    add_items_to_playlist(chat_id, spotify.to_owned(), track_ids);
 
-                let sliced = match parsing_result {
-                    Ok(sliced) => sliced,
-                    Err(e) => {
-                        log::error!("Error when parsing tracks: {e}");
-                        return respond(());
-                    }
+                let message = match add_items_result {
+                    Err(e) => e,
+                    Ok(e) => e,
                 };
 
-                let playable = sliced
-                    .iter()
-                    .map(|x| x as &dyn PlayableId)
-                    .collect::<Vec<_>>();
-
-                let expected_name = chat_id;
-
-                let user_playlists = match spotify
-                    .current_user_playlists()
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    Ok(res) => res,
-                    Err(e) => {
-                        log::error!("Unable to get my playlists: {e}");
-                        return respond(());
-                    }
-                };
-
-                let current_user = match spotify.current_user() {
-                    Ok(user) => user,
-                    Err(e) => {
-                        log::error!("Error getting current user: {e}");
-                        return respond(());
-                    }
-                };
-
-                let found_playlist_id = {
-                    let found_playlist =
-                        user_playlists.into_iter().find(|x| x.name == expected_name);
-                    if let Some(playlist_id) = found_playlist {
-                        playlist_id.id
-                    } else {
-                        let created_playlist = spotify
-                            .user_playlist_create(
-                                &current_user.id,
-                                &expected_name,
-                                Some(true),
-                                Some(false),
-                                None,
-                            )
-                            .map(|x| x.id);
-                        match created_playlist {
-                            Ok(id) => id,
-                            Err(e) => {
-                                log::error!("Error creating playlist current user: {e}");
-                                return respond(());
-                            }
-                        }
-                    }
-                };
-
-                let playlist_options = match spotify
-                    .playlist_items(&found_playlist_id, None, None)
-                    .collect::<Result<Vec<_>, _>>()
-                {
-                    Ok(playlist) => playlist,
-                    Err(e) => {
-                        log::error!("Could not  get user playlist: {e}");
-                        return respond(());
-                    }
-                }
-                .into_iter()
-                .map(|x| x.track.and_then(|x| x.id().map(|x| x.id().to_string())))
-                .collect::<Option<Vec<_>>>();
-
-                let playlist = match playlist_options {
-                    Some(items) => items,
-                    None => {
-                        log::error!("Error when getting track ids.");
-                        return respond(());
-                    }
-                };
-
-                let playables_to_add = playable
-                    .into_iter()
-                    .filter(|playable| !playlist.clone().into_iter().any(|x| x == playable.id()))
-                    .collect::<Vec<_>>();
-
-                let add_items_result = {
-                    if playables_to_add.len() < 1 {
-                        Err("No items to add, or only duplicates.".to_string())
-                    } else {
-                        spotify
-                            .playlist_add_items(&found_playlist_id, playables_to_add, None)
-                            .map_err(|err| err.to_string())
-                    }
-                };
-
-                match add_items_result {
-                    Err(e) => {
-                        log::error!("Error when adding items to playlist: {e}")
-                    }
-                    _ => (),
-                }
-
-                let send_message = bot
-                    .send_message(msg.chat.id, format!("Added to playlist!"))
+                let send_message_result = bot
+                    .send_message(msg.chat.id, message)
                     .map_err(|err| err.to_string())
                     .await;
 
-                match send_message {
+                match send_message_result {
                     Ok(_) => log::info!("Sent message successfully!"),
                     Err(e) => log::error!("Error when sending message: {e}"),
                 };
@@ -175,6 +76,96 @@ async fn main() {
         }
     })
     .await;
+}
+
+fn add_items_to_playlist(
+    expected_name: String,
+    spotify: AuthCodeSpotify,
+    track_ids: Vec<String>,
+) -> Result<String, String> {
+    if track_ids.len() == 0 {
+        log::info!("Found no track ids in message, skipping.");
+        return Err("No items to add.".to_string());
+    }
+
+    let parsing_result = track_ids
+        .into_iter()
+        .map(|track_id| TrackId::from_id(&track_id))
+        .collect::<Result<Vec<_>, _>>();
+
+    let sliced = match parsing_result {
+        Ok(sliced) => sliced,
+        Err(e) => return Err(format!("Error when parsing tracks: {e}")),
+    };
+
+    let playable = sliced
+        .iter()
+        .map(|x| x as &dyn PlayableId)
+        .collect::<Vec<_>>();
+
+    let user_playlists = match spotify
+        .current_user_playlists()
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(res) => res,
+        Err(e) => return Err(format!("Unable to get my playlists: {e}").to_string()),
+    };
+
+    let current_user = match spotify.current_user() {
+        Ok(user) => user,
+        Err(e) => return Err(format!("Error getting current user: {e}")),
+    };
+
+    let found_playlist_id = {
+        let found_playlist = user_playlists.into_iter().find(|x| x.name == expected_name);
+        if let Some(playlist_id) = found_playlist {
+            playlist_id.id
+        } else {
+            let created_playlist = spotify
+                .user_playlist_create(
+                    &current_user.id,
+                    &expected_name,
+                    Some(true),
+                    Some(false),
+                    None,
+                )
+                .map(|x| x.id);
+            match created_playlist {
+                Ok(id) => id,
+                Err(e) => return Err(format!("Error creating playlist: {e}").to_string()),
+            }
+        }
+    };
+
+    let playlist_options = match spotify
+        .playlist_items(&found_playlist_id, None, None)
+        .collect::<Result<Vec<_>, _>>()
+    {
+        Ok(playlist) => playlist,
+        Err(e) => return Err(format!("Could not get user playlist: {e}").to_string()),
+    }
+    .into_iter()
+    .map(|x| x.track.and_then(|x| x.id().map(|x| x.id().to_string())))
+    .collect::<Option<Vec<_>>>();
+
+    let playlist = match playlist_options {
+        Some(items) => items,
+        None => return Err(format!("Error when getting track ids.").to_string()),
+    };
+
+    let playables_to_add = playable
+        .into_iter()
+        .filter(|playable| !playlist.clone().into_iter().any(|x| x == playable.id()))
+        .collect::<Vec<_>>();
+
+    if playables_to_add.len() < 1 {
+        Err("No items to add, or only duplicates.".to_string())
+    } else {
+        let res = spotify
+            .playlist_add_items(&found_playlist_id, playables_to_add, None)
+            .map_err(|err| format!("Error when adding items: {}", err.to_string()));
+        res.map(|_| format!("Added to playlist: ...").to_string())
+    }
 }
 
 fn extract_media_text(message: &Message) -> Option<(i64, &str)> {
