@@ -95,7 +95,7 @@ fn add_items_to_playlist(
 
     let sliced = match parsing_result {
         Ok(sliced) => sliced,
-        Err(e) => return Err(format!("Error when parsing tracks: {e}")),
+        Err(e) => return Err(format!("Could not parse tracks: {e}")),
     };
 
     let playable = sliced
@@ -113,7 +113,7 @@ fn add_items_to_playlist(
 
     let current_user = match spotify.current_user() {
         Ok(user) => user,
-        Err(e) => return Err(format!("Error getting current user: {e}")),
+        Err(e) => return Err(format!("Unable to get current user: {e}")),
     };
 
     let found_playlist_id = {
@@ -132,7 +132,7 @@ fn add_items_to_playlist(
                 .map(|x| x.id);
             match created_playlist {
                 Ok(id) => id,
-                Err(e) => return Err(format!("Error creating playlist: {e}").to_string()),
+                Err(e) => return Err(format!("Unable to create playlist: {e}").to_string()),
             }
         }
     };
@@ -150,7 +150,7 @@ fn add_items_to_playlist(
 
     let playlist = match playlist_options {
         Some(items) => items,
-        None => return Err(format!("Error when getting track ids.").to_string()),
+        None => return Err(format!("Could not get track ids.").to_string()),
     };
 
     let playables_to_add = playable
@@ -160,7 +160,7 @@ fn add_items_to_playlist(
 
     let playlist_url = match PlaylistId::from_id_or_uri(found_playlist_id.id()) {
         Ok(playlist) => playlist.url(),
-        Err(e) => return Err(format!("Error when formatting playlist URL: {e}")),
+        Err(e) => return Err(format!("Could not format playlist URL: {e}")),
     };
 
     if playables_to_add.len() < 1 {
@@ -168,7 +168,7 @@ fn add_items_to_playlist(
     } else {
         let res = spotify
             .playlist_add_items(&found_playlist_id, playables_to_add, None)
-            .map_err(|err| format!("Error when adding items: {}", err.to_string()));
+            .map_err(|err| format!("Could not add items: {}", err.to_string()));
         res.map(|_| format!("Added to playlist: {playlist_url}").to_string())
     }
 }
