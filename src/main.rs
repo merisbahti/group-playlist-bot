@@ -5,7 +5,7 @@ use futures::{future::ok, lock::Mutex, TryFutureExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::{
-    clients::OAuthClient,
+    clients::{BaseClient, OAuthClient},
     model::{Id, PlayableId, TrackId},
 };
 use teloxide::{
@@ -13,7 +13,7 @@ use teloxide::{
     prelude::{Requester, RequesterExt},
     respond,
     types::{Chat, MediaKind, MediaText, Message, MessageCommon, MessageKind},
-    Bot,
+    Bot, RequestError,
 };
 
 use crate::client::get_client;
@@ -117,13 +117,46 @@ async fn main() {
                     }
                 };
 
-                let add_items_result = spotify
-                    .playlist_add_items(&found_playlist_id, playable, None)
-                    .map_err(|err| err.to_string());
+                let playlist_options = match spotify
+                    .playlist_items(&found_playlist_id, None, None)
+                    .collect::<Result<Vec<_>, _>>()
+                {
+                    Ok(playlist) => playlist,
+                    Err(e) => {
+                        log::error!("Could not  get user playlist: {e}");
+                        return respond(());
+                    }
+                }
+                .into_iter()
+                .map(|x| x.track.and_then(|x| x.id().map(|x| x.id().to_string())))
+                .collect::<Option<Vec<_>>>();
+
+                let playlist = match playlist_options {
+                    Some(items) => items,
+                    None => {
+                        log::error!("Error when getting track ids.");
+                        return respond(());
+                    }
+                };
+
+                let playables_to_add = playable
+                    .into_iter()
+                    .filter(|playable| !playlist.clone().into_iter().any(|x| x == playable.id()))
+                    .collect::<Vec<_>>();
+
+                let add_items_result = {
+                    if playables_to_add.len() < 1 {
+                        Err("No items to add, or only duplicates.".to_string())
+                    } else {
+                        spotify
+                            .playlist_add_items(&found_playlist_id, playables_to_add, None)
+                            .map_err(|err| err.to_string())
+                    }
+                };
 
                 match add_items_result {
                     Err(e) => {
-                        log::error!("Error when adding playlist: {e}")
+                        log::error!("Error when adding items to playlist: {e}")
                     }
                     _ => (),
                 }
