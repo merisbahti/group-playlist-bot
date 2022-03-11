@@ -55,10 +55,19 @@ async fn main() {
                     return respond(());
                 }
 
-                let sliced = track_ids
+                let parsing_result = track_ids
                     .into_iter()
-                    .map(|track_id| TrackId::from_id(&track_id).unwrap())
-                    .collect::<Vec<_>>();
+                    .map(|track_id| TrackId::from_id(&track_id))
+                    .collect::<Result<Vec<_>, _>>();
+
+                let sliced = match parsing_result {
+                    Ok(sliced) => sliced,
+                    Err(e) => {
+                        log::error!("Error when parsing tracks: {e}");
+                        return respond(());
+                    }
+                };
+
                 let playable = sliced
                     .iter()
                     .map(|x| x as &dyn PlayableId)
@@ -66,21 +75,34 @@ async fn main() {
 
                 let expected_name = chat_id;
 
-                let result = spotify
+                let user_playlists = match spotify
                     .current_user_playlists()
-                    .take_while(|x| x.is_ok())
-                    .filter_map(|a| a.ok())
-                    .collect::<Vec<_>>();
+                    .collect::<Result<Vec<_>, _>>()
+                {
+                    Ok(res) => res,
+                    Err(e) => {
+                        log::error!("Unable to get my playlists: {e}");
+                        return respond(());
+                    }
+                };
 
-                log::info!("result: {result:?}");
+                let current_user = match spotify.current_user() {
+                    Ok(user) => user,
+                    Err(e) => {
+                        log::error!("Error getting current user: {e}");
+                        return respond(());
+                    }
+                };
+
                 let found_playlist_id = {
-                    let found_playlist = result.into_iter().find(|x| x.name == expected_name);
+                    let found_playlist =
+                        user_playlists.into_iter().find(|x| x.name == expected_name);
                     if let Some(playlist_id) = found_playlist {
                         playlist_id.id
                     } else {
                         spotify
                             .user_playlist_create(
-                                &spotify.current_user().unwrap().id,
+                                &current_user.id,
                                 &expected_name,
                                 Some(true),
                                 Some(false),
