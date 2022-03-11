@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
+use dotenv::dotenv;
 use futures::{lock::Mutex, TryFutureExt};
+use lazy_static::lazy_static;
+use regex::Regex;
 use rspotify::{
     clients::OAuthClient,
     model::{Id, PlayableId, TrackId},
@@ -12,9 +15,6 @@ use teloxide::{
     types::{Chat, MediaKind, MediaText, Message, MessageCommon, MessageKind},
     Bot,
 };
-use dotenv::dotenv;
-use lazy_static::lazy_static;
-use regex::Regex;
 
 use crate::client::get_client;
 pub mod client;
@@ -40,12 +40,14 @@ async fn main() {
                     (format!("telegram-{chat_id}"), extract_spotify_urls(message))
                 });
 
-                if extracted_media_text.is_none() {
-                    log::info!("no media text in {msg:?}");
-                    return respond(());
-                }
+                let (chat_id, track_ids) = match extracted_media_text {
+                    Some(tuple) => tuple,
+                    None => {
+                        log::info!("no media text in {msg:?}");
+                        return respond(());
+                    }
+                };
 
-                let (chat_id, track_ids) = extracted_media_text.unwrap();
                 log::info!("got media text: {track_ids:?}");
 
                 if track_ids.len() == 0 {
