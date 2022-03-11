@@ -1,7 +1,7 @@
-use std::{str::FromStr, sync::Arc};
+use std::sync::Arc;
 
 use dotenv::dotenv;
-use futures::{future::ok, lock::Mutex, TryFutureExt};
+use futures::TryFutureExt;
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::{
@@ -14,7 +14,7 @@ use teloxide::{
     prelude::{Requester, RequesterExt},
     respond,
     types::{Chat, MediaKind, MediaText, Message, MessageCommon, MessageKind},
-    Bot, RequestError,
+    Bot,
 };
 
 use crate::client::get_client;
@@ -26,15 +26,13 @@ async fn main() {
     teloxide::enable_logging!();
     log::info!("Starting bot...");
 
-    let spotify = Arc::new(Mutex::new(get_client()));
+    let spotify = Arc::new(get_client());
     let bot = Bot::from_env().auto_send();
 
     teloxide::repls2::repl(bot, {
         move |msg: Message, bot: AutoSend<Bot>| {
             let spotify = spotify.clone();
             async move {
-                let spotify = spotify.lock().await;
-
                 let extracted_media_text = extract_media_text(&msg).map(|(chat_id, message)| {
                     (format!("telegram-{chat_id}"), extract_spotify_urls(message))
                 });
@@ -54,8 +52,7 @@ async fn main() {
                     return respond(());
                 }
 
-                let add_items_result =
-                    add_items_to_playlist(chat_id, spotify.to_owned(), track_ids);
+                let add_items_result = add_items_to_playlist(chat_id, spotify.as_ref(), track_ids);
 
                 let message = match add_items_result {
                     Err(e) => e,
@@ -80,7 +77,7 @@ async fn main() {
 
 fn add_items_to_playlist(
     expected_name: String,
-    spotify: AuthCodeSpotify,
+    spotify: &AuthCodeSpotify,
     track_ids: Vec<String>,
 ) -> Result<String, String> {
     if track_ids.len() == 0 {
