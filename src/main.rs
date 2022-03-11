@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use dotenv::dotenv;
-use futures::{lock::Mutex, TryFutureExt};
+use futures::{future::ok, lock::Mutex, TryFutureExt};
 use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::{
@@ -32,9 +32,7 @@ async fn main() {
         move |msg: Message, bot: AutoSend<Bot>| {
             let spotify = spotify.clone();
             async move {
-                log::info!("in async");
                 let spotify = spotify.lock().await;
-                log::info!("gotten clientasync");
 
                 let extracted_media_text = extract_media_text(&msg).map(|(chat_id, message)| {
                     (format!("telegram-{chat_id}"), extract_spotify_urls(message))
@@ -100,7 +98,7 @@ async fn main() {
                     if let Some(playlist_id) = found_playlist {
                         playlist_id.id
                     } else {
-                        spotify
+                        let created_playlist = spotify
                             .user_playlist_create(
                                 &current_user.id,
                                 &expected_name,
@@ -108,16 +106,28 @@ async fn main() {
                                 Some(false),
                                 None,
                             )
-                            .unwrap()
-                            .id
+                            .map(|x| x.id);
+                        match created_playlist {
+                            Ok(id) => id,
+                            Err(e) => {
+                                log::error!("Error creating playlist current user: {e}");
+                                return respond(());
+                            }
+                        }
                     }
                 };
 
-                let _add_items = {
-                    spotify
-                        .playlist_add_items(&found_playlist_id, playable, None)
-                        .map_err(|err| err.to_string())
-                };
+                let add_items_result = spotify
+                    .playlist_add_items(&found_playlist_id, playable, None)
+                    .map_err(|err| err.to_string());
+
+                match add_items_result {
+                    Err(e) => {
+                        log::error!("Error when adding playlist: {e}")
+                    }
+                    _ => (),
+                }
+
                 let send_message = bot
                     .send_message(msg.chat.id, format!("Added to playlist!"))
                     .map_err(|err| err.to_string())
@@ -125,7 +135,7 @@ async fn main() {
 
                 match send_message {
                     Ok(_) => log::info!("Sent message successfully!"),
-                    Err(e) => log::error!("{}", e),
+                    Err(e) => log::error!("Error when sending message: {e}"),
                 };
                 respond(())
             }
