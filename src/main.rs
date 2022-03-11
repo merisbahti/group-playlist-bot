@@ -6,7 +6,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 use rspotify::{
     clients::{BaseClient, OAuthClient},
-    model::{Id, PlayableId, TrackId},
+    model::{Id, PlayableId, PlaylistId, TrackId},
     AuthCodeSpotify,
 };
 use teloxide::{
@@ -158,13 +158,18 @@ fn add_items_to_playlist(
         .filter(|playable| !playlist.clone().into_iter().any(|x| x == playable.id()))
         .collect::<Vec<_>>();
 
+    let playlist_url = match PlaylistId::from_id_or_uri(found_playlist_id.id()) {
+        Ok(playlist) => playlist.url(),
+        Err(e) => return Err(format!("Error when formatting playlist URL: {e}")),
+    };
+
     if playables_to_add.len() < 1 {
         Err("No items to add, or only duplicates.".to_string())
     } else {
         let res = spotify
             .playlist_add_items(&found_playlist_id, playables_to_add, None)
             .map_err(|err| format!("Error when adding items: {}", err.to_string()));
-        res.map(|_| format!("Added to playlist: ...").to_string())
+        res.map(|_| format!("Added to playlist: {playlist_url}").to_string())
     }
 }
 
