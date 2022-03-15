@@ -3,14 +3,15 @@ use std::env;
 use rspotify::{clients::BaseClient, scopes, AuthCodeSpotify, Credentials, OAuth, Token};
 
 pub fn get_client() -> AuthCodeSpotify {
-    if let Ok(access_token) = env::var("RSPOTIFY_ACCESS_TOKEN") {
+    /*if let Ok(access_token) = env::var("RSPOTIFY_ACCESS_TOKEN") {
         let tok = Token {
             access_token,
             ..Default::default()
         };
 
         AuthCodeSpotify::from_token(tok)
-    } else if let Ok(refresh_token) = env::var("RSPOTIFY_REFRESH_TOKEN") {
+    } else if*/
+    if let Ok(refresh_token) = env::var("RSPOTIFY_REFRESH_TOKEN") {
         // The credentials must be available in the environment. Enable
         // `env-file` in order to read them from an `.env` file.
         let creds = Credentials::from_env().unwrap_or_else(|| {
